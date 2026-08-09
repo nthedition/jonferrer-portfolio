@@ -1,0 +1,49 @@
+# Trimmed values for prometheus-community/kube-prometheus-stack.
+# Goal: real observability (portfolio-worthy) without eating the 12GB/2-OCPU budget.
+# Alertmanager and default persistence are disabled — not needed at this scale,
+# and dropping them saves real memory headroom.
+
+alertmanager:
+  enabled: false
+
+grafana:
+  adminPassword: changeme   # override before applying: --set grafana.adminPassword=...
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 384Mi
+
+prometheus:
+  prometheusSpec:
+    retention: 6h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+    storageSpec: {}   # no PVC — ephemeral TSDB is fine for a 6h retention demo cluster
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

@@ -1,0 +1,49 @@
+# The portfolio-html ConfigMap is generated from site/index.html, not defined
+# here — see README Step 4. Keeping real HTML out of a hand-indented YAML
+# literal makes it maintainable as an actual file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-site
+  namespace: portfolio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portfolio-site
+  template:
+    metadata:
+      labels:
+        app: portfolio-site
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+      volumes:
+        - name: html
+          configMap:
+            name: portfolio-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portfolio-site
+  namespace: portfolio
+spec:
+  selector:
+    app: portfolio-site
+  ports:
+    - port: 80
+      targetPort: 80

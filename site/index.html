@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jon Ferrer — Kubernetes / DevOps</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121820;
+    --border: #223041;
+    --text: #dbe4ee;
+    --muted: #8ba0b5;
+    --accent: #4fd1c5;
+    --accent2: #f0b429;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+  header.hero {
+    padding: 72px 0 48px;
+    border-bottom: 1px solid var(--border);
+  }
+  header.hero h1 { font-size: 2.2rem; margin: 0 0 8px; }
+  header.hero p.tagline { color: var(--muted); font-size: 1.1rem; margin: 0; }
+  .badges { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+  }
+  section { padding: 48px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+  h2 { font-size: 1.4rem; color: var(--accent); margin-bottom: 20px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 8px; }
+  .diagram {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    color: var(--muted);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .incident {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+  }
+  .incident .symptom { color: var(--text); font-weight: 600; }
+  .incident .cause { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
+  .incident code {
+    background: #1a2330;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .stack-item {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    font-size: 0.9rem;
+  }
+  .stack-item .role { display: block; color: var(--muted); font-size: 0.75rem; margin-top: 4px; }
+  .screenshot {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: 0.9rem; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .todo { color: var(--accent2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>Jon Ferrer</h1>
+    <p class="tagline">Kubernetes &amp; cloud infrastructure — this site runs on a cluster I built and operate myself.</p>
+    <div class="badges">
+      <span class="badge">k3s</span>
+      <span class="badge">OCI Always Free (Ampere A1 / ARM64)</span>
+      <span class="badge">Traefik + Let's Encrypt</span>
+      <span class="badge">Prometheus / Grafana</span>
+    </div>
+  </header>
+
+  <section id="architecture">
+    <h2><span class="num">01</span>Architecture</h2>
+    <p>Two-node k3s cluster on two Oracle Cloud "Always Free" ARM instances (1 OCPU / 6GB each — the
+    entire Ampere A1 free allotment, split across both nodes). Traefik (bundled with k3s) handles
+    ingress and TLS termination directly via its ACME client — no cloud load balancer, no
+    cert-manager, $0 beyond the free tier.</p>
+    <div class="diagram">
+┌─────────────────────────────┐        ┌─────────────────────────────┐
+│   k8s-control-plane         │        │   k8s-worker-arm1           │
+│   1 OCPU / 6GB (ARM64)      │◄──────►│   1 OCPU / 6GB (ARM64)      │
+│                             │ VXLAN  │                             │
+│   ┌──────────────────────┐  │ (flannel, UDP 8472)                  │
+│   │ Traefik (ingress)    │  │        │   ┌─────────────────────┐   │
+│   │  + Let's Encrypt ACME│  │        │   │ portfolio-site pod  │   │
+│   └──────────────────────┘  │        │   └─────────────────────┘   │
+│   ┌─────────────────────┐   │        │   ┌─────────────────────┐   │
+│   │ Prometheus          │   │        │   │ Grafana             │   │
+│   └─────────────────────┘   │        │   └─────────────────────┘   │
+└─────────────────────────────┘        └─────────────────────────────┘
+        ▲                                        ▲
+        └──────────────── public internet ───────┘
+              (DNS → node IP, HTTPS via Traefik)
+    </div>
+  </section>
+
+  <section id="incidents">
+    <h2><span class="num">02</span>Debug log</h2>
+    <p>Most portfolio projects show a finished, working demo. This section is the opposite:
+    the actual incidents hit while standing this cluster back up, in the order they happened,
+    because diagnosing this kind of thing is the actual job.</p>
+
+    <div class="incident">
+      <div class="symptom">TLS SAN mismatch on the k3s API server</div>
+      <div class="cause">Reinstalling k3s with <code>--node-external-ip</code> alone doesn't add
+      the public IP to the server certificate. Fixed by adding <code>--tls-san</code> explicitly,
+      and for a live cluster, by appending <code>tls-san</code> to
+      <code>/etc/rancher/k3s/config.yaml</code> and restarting — no need to reinstall.</div>
+    </div>
+
+    <div class="incident">
+      <div class="symptom">"certificate signed by unknown authority" after merging kubeconfigs</div>
+      <div class="cause"><code>kubectl config view --flatten</code> keeps the <em>first</em>-seen
+      cluster/context/user when names collide across files listed in <code>KUBECONFIG</code>.
+      A stale local entry from before the reinstall silently won over the new cluster CA.</div>
+    </div>
+
+    <div class="incident">
+      <div class="symptom">Cross-node pod traffic: 502, then "No route to host"</div>
+      <div class="cause">firewalld's trusted zone allowed the node subnet but not the pod/service
+      CIDRs. Host-to-host VXLAN traffic (source = node IP) passed fine, but once decapsulated,
+      the inner pod-to-pod packet (source/dest in the pod CIDR) fell into the restrictive default
+      zone and got dropped. Fixed by adding the pod and service CIDRs to the trusted zone on both
+      nodes.</div>
+    </div>
+
+    <div class="incident">
+      <div class="symptom">Ingress traffic hit a wall - a completely different nginx answered</div>
+      <div class="cause">A pre-existing system <code>nginx</code>, left running from an earlier
+      project on the same box, already owned ports 80/443. Traefik's <code>ServiceLB</code> daemonset
+      never got real traffic on that node until it was stopped.</div>
+    </div>
+
+    <div class="incident">
+      <div class="symptom">Still broken after freeing the port</div>
+      <div class="cause">k3s's <code>klipper-lb</code> doesn't bind a socket. It inserts raw
+      <code>iptables</code> DNAT/FORWARD rules at pod startup. A <code>firewall-cmd --reload</code>
+      run minutes earlier (to fix the CIDR issue above) had rebuilt the ruleset and wiped those
+      rules out from under it. Recreating the pods reinserted them.</div>
+    </div>
+
+    <div class="incident">
+      <div class="symptom">Grafana stuck in CrashLoopBackOff</div>
+      <div class="cause">Exit code 137 - <code>OOMKilled</code>. A hand-tuned 192Mi memory limit
+      (sized against an older Grafana release) was too tight for the current version to even
+      finish booting. Raised the limit and re-applied via <code>helm upgrade</code>.</div>
+    </div>
+
+    <div class="incident">
+      <div class="symptom">DNS pointed at the right IP, but nothing matched</div>
+      <div class="cause">DuckDNS's real service is at <code>duckdns.org</code> -
+      <code>duckdns.com</code> is an unrelated domain that resolves any subdomain, real or
+      invented, to its own generic parking IPs. Every check "worked" right up until the TLS
+      certificate came back for the wrong domain.</div>
+    </div>
+  </section>
+
+  <section id="stack">
+    <h2><span class="num">03</span>Stack</h2>
+    <div class="stack-grid">
+      <div class="stack-item">k3s<span class="role">orchestration</span></div>
+      <div class="stack-item">Traefik<span class="role">ingress + TLS</span></div>
+      <div class="stack-item">Let's Encrypt<span class="role">ACME certs</span></div>
+      <div class="stack-item">Prometheus<span class="role">metrics</span></div>
+      <div class="stack-item">Grafana<span class="role">dashboards</span></div>
+      <div class="stack-item">Helm<span class="role">packaging</span></div>
+      <div class="stack-item">OCI Ampere A1<span class="role">ARM64, free tier</span></div>
+      <div class="stack-item">flannel<span class="role">pod networking</span></div>
+    </div>
+  </section>
+
+  <section id="monitoring">
+    <h2><span class="num">04</span>Live cluster metrics</h2>
+    <p>Grafana runs in-cluster (kept off the public internet deliberately — access is via
+    <code>kubectl port-forward</code> only), fed by Prometheus scraping node and cluster metrics
+    every 30s.</p>
+    <img class="screenshot" src="grafana-dashboard.png"
+         alt="Grafana dashboard showing live CPU and memory usage across the flux-system, kube-system, monitoring, and portfolio namespaces">
+
+  </section>
+
+  <footer>
+    <p>
+      Source for this entire setup (manifests, Helm values, and the runbook used to build it)
+      is at <a href="https://github.com/nthedition/jonferrer-portfolio">github.com/nthedition/jonferrer-portfolio</a>.
+    </p>
+    <p><span class="todo">TODO:</span> separate app and cluster repo for better GitOps simulation.</p>
+  </footer>
+
+</div>
+</body>
+</html>

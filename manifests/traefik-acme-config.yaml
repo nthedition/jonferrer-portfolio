@@ -1,0 +1,25 @@
+# Enables Let's Encrypt via Traefik's built-in ACME support (HTTP-01 challenge).
+# k3s auto-manages the "traefik" Helm release through its built-in helm-controller;
+# this HelmChartConfig is picked up automatically and triggers a helm upgrade —
+# no manual `helm upgrade` needed, unlike the monitoring stack.
+#
+# Persistence is required: without it, acme.json (the issued cert + private key)
+# is lost on every pod restart, and re-requesting a fresh cert too often risks
+# hitting Let's Encrypt's rate limits. Uses k3s's built-in local-path storage
+# class (hostPath-backed, no extra install, negligible size for one cert).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    additionalArguments:
+      - "--certificatesresolvers.letsencrypt.acme.email=jon.r.ferrer@gmail.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    persistence:
+      enabled: true
+      path: /data
+      size: 128Mi
+      storageClass: local-path
