@@ -84,24 +84,22 @@ Expect both nodes `Ready` within ~30-60s of the worker install finishing.
 ## Step 4 — Deploy the portfolio site
 
 The site content lives at `site/index.html` — a single self-contained static
-page (no build step). It's turned into a `ConfigMap` from that file directly,
-rather than hand-indented as YAML, so it stays editable as a normal HTML file.
+page (no build step). The root `kustomization.yaml` turns it into a
+`ConfigMap` via `configMapGenerator`, which hashes the file's content into
+the generated name (e.g. `portfolio-html-btmg9c6mc9`). Kustomize also rewrites
+the Deployment's volume reference to match automatically, so **every real
+content change produces a new ConfigMap name and forces a rolling pod
+update** — no manual restart, no waiting on the kubelet's sync delay.
 
 ```bash
 cd ~/projects/personal/kubernetes-study/portfolio-deployment
-kubectl --context oci-k8s-study apply -f manifests/namespace.yaml
-kubectl --context oci-k8s-study create configmap portfolio-html \
-  --from-file=index.html=site/index.html \
-  --namespace portfolio --dry-run=client -o yaml \
-  | kubectl --context oci-k8s-study apply -f -
-kubectl --context oci-k8s-study apply -f manifests/portfolio-placeholder.yaml
-kubectl --context oci-k8s-study apply -f manifests/portfolio-ingress.yaml
+kubectl --context oci-k8s-study apply -k .
 ```
 
-Editing `site/index.html` later just means re-running the `create configmap
-... | apply` line, then `kubectl rollout restart deployment/portfolio-site -n
-portfolio` to pick it up (the Deployment doesn't auto-reload on ConfigMap
-changes).
+That one command applies everything — namespace, site ConfigMap+Deployment+
+Service, ingress, and the Traefik ACME config. Editing `site/index.html` and
+re-running it is the entire update workflow (once Flux is set up per Step 7,
+this happens automatically on every push instead).
 
 **Quick test without a domain**, using Traefik's host-port directly:
 ```bash
@@ -207,6 +205,33 @@ happens to resolve *any* subdomain (real or made up) to its own generic
 parking IPs. If `dig` shows a hostname flapping between a couple of fixed
 IPs regardless of what you set on the DuckDNS dashboard, check you're not
 accidentally testing `.com`.
+
+## Step 8 — Flux (GitOps)
+
+Once this repo is pushed to GitHub, Flux reconciles the cluster against it
+automatically — a `git push` to `main` becomes the deploy step, no manual
+`kubectl apply` needed going forward.
+
+```bash
+export GITHUB_TOKEN="$(gh auth token)"
+flux bootstrap github \
+  --context=oci-k8s-study \
+  --owner=<your-github-username> \
+  --repository=jonferrer-portfolio \
+  --branch=main \
+  --path=clusters/oci-k8s-study \
+  --personal
+```
+
+This installs Flux's controllers into the `flux-system` namespace and commits
+its own bootstrap manifests back into `clusters/oci-k8s-study/flux-system/`
+in the repo. It does **not** yet know to deploy the site/monitoring — that
+needs an explicit `GitRepository` + `Kustomization` pointing at the repo
+root, added separately (see `clusters/oci-k8s-study/apps.yaml`).
+
+Flux picked over Argo CD here deliberately: it's modular (source-controller +
+kustomize-controller only, no bundled UI/Redis/Dex), which matters on a
+12GB-total cluster already running Prometheus/Grafana.
 
 ## Not covered here (deliberately, follow-up work)
 
