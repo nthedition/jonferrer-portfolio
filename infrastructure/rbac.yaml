@@ -7,6 +7,19 @@
 # defining a scoped Role inherently requires broader rights than the scoped
 # identity ends up with.
 #
+# The ServiceAccount lives in `flux-system`, NOT `portfolio` -- Flux
+# resolves a Kustomization's serviceAccountName in the same namespace as
+# the Kustomization object itself (apps.yaml lives in flux-system), not the
+# namespace it's deploying into. Getting this backwards produces a
+# `system:serviceaccount:flux-system:apps-reconciler` identity that doesn't
+# exist and gets a blanket Forbidden on everything -- confirmed the hard
+# way once already, don't move this back to `portfolio`. The Role/
+# RoleBinding still live in `portfolio` (where the resources actually are),
+# with the RoleBinding's subject pointing cross-namespace at the
+# flux-system ServiceAccount -- the same "subject namespace can differ from
+# RoleBinding namespace" mechanism used for the (now-removed) monitoring
+# grant, just applied in the other direction.
+#
 # The Grafana Secret (infrastructure/monitoring/grafana-secret.enc.yaml) and
 # the Namespace/HelmChartConfig above are all reconciled by `infrastructure`
 # directly now, not by `apps` -- so apps-reconciler no longer needs any
@@ -15,7 +28,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: apps-reconciler
-  namespace: portfolio
+  namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -35,7 +48,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: apps-reconciler
-    namespace: portfolio
+    namespace: flux-system
 roleRef:
   kind: Role
   name: apps-reconciler
