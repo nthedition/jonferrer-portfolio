@@ -1,0 +1,23 @@
+# Thin pointer at the infra-tier manifests (infrastructure/): the Namespace
+# itself, Traefik's HelmChartConfig, the RBAC definitions, the Grafana
+# secret, and Discord notification config. Deliberately no
+# serviceAccountName override -- these are cluster/bootstrap-level concerns
+# by design (see infrastructure/rbac.yaml's comment), reconciled with the
+# same broader permissions flux-system already carries for its own CRDs,
+# rather than creating a second privileged identity.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./infrastructure
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age

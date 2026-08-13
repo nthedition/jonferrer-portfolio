@@ -28,13 +28,28 @@ jobs:
       # flags it as an error. Stripped here since it's a validator false
       # positive, not a real apply-time problem (kustomize-controller
       # decrypts and applies this correctly in-cluster).
-      - name: Build root kustomization (site, ingress, ACME config)
+      - name: Build apps/portfolio-site kustomization
         run: |
           mkdir -p .rendered
-          kustomize build . | yq eval 'del(.sops)' - > .rendered/root.yaml
+          kustomize build apps/portfolio-site | yq eval 'del(.sops)' - > .rendered/apps.yaml
+
+      - name: Build infrastructure kustomization
+        run: kustomize build infrastructure | yq eval 'del(.sops)' - > .rendered/infrastructure.yaml
 
       - name: Build Flux's flux-system kustomization
         run: kustomize build clusters/oci-k8s-study/flux-system | yq eval 'del(.sops)' - > .rendered/flux-system.yaml
+
+      # clusters/oci-k8s-study/ deliberately has no kustomization.yaml of its
+      # own -- kustomize-controller auto-generates one covering every YAML
+      # file in that directory (a Flux-specific feature; plain `kustomize
+      # build` can't replicate it). Only apps.yaml and infrastructure.yaml
+      # (thin Kustomization CR pointers) live there now.
+      # eval-all (not `cat | yq eval`) because naive shell concatenation of
+      # multiple YAML files silently merges documents that don't happen to
+      # end with a trailing `---`, producing "key already set in map" errors
+      # -- eval-all treats each input file as its own document correctly.
+      - name: Build loose cluster manifests (everything Flux auto-discovers here)
+        run: yq eval-all 'del(.sops)' clusters/oci-k8s-study/*.yaml > .rendered/cluster-loose.yaml
 
       # Treat kubeconform runs as a *separate Docker container*
       - name: Validate against Kubernetes schemas
@@ -43,9 +58,10 @@ jobs:
           entrypoint: /kubeconform
           args: >-
             -strict -ignore-missing-schemas -summary
-            .rendered/root.yaml
+            .rendered/apps.yaml
+            .rendered/infrastructure.yaml
             .rendered/flux-system.yaml
-            clusters/oci-k8s-study/apps.yaml
+            .rendered/cluster-loose.yaml
 
       # Advisory only for now (continue-on-error) -- no .kube-linter.yaml yet,
       # so this runs kube-linter's full default check set. Once there's a real
@@ -57,6 +73,7 @@ jobs:
           entrypoint: /kube-linter
           args: >-
             lint
-            .rendered/root.yaml
+            .rendered/apps.yaml
+            .rendered/infrastructure.yaml
             .rendered/flux-system.yaml
-            clusters/oci-k8s-study/apps.yaml
+            .rendered/cluster-loose.yaml

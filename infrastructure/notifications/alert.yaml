@@ -1,0 +1,22 @@
+# This object already existed live in the cluster (applied directly, at some
+# point before this repo was restructured) with no manifest anywhere in git
+# -- meaning it was invisible to GitOps entirely: Flux couldn't have
+# recreated it on a fresh bootstrap, and any future git-based prune wouldn't
+# have known it existed. Recreated here to match the live object exactly, so
+# it's actually tracked going forward.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: discord-alerts
+  namespace: flux-system
+spec:
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: apps
+    - kind: Kustomization
+      name: infrastructure
+    - kind: Kustomization
+      name: flux-system
+  providerRef:
+    name: discord

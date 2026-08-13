@@ -19,10 +19,15 @@ Oracle Cloud's Always Free tier (2 OCPU / 12GB total, $0/month).
 
 ## Layout
 
+Two Kustomize trees, reconciled by two separate Flux `Kustomization`s with
+different permission levels — see `infrastructure/rbac.yaml`'s comment for
+why they're split this way.
+
 | Path | What it is |
 |---|---|
-| `manifests/` | Kubernetes manifests (namespace, ingress, Traefik ACME config, site Deployment/Service) |
-| `monitoring/values.yaml` | Trimmed Helm values for `kube-prometheus-stack` |
+| `apps/portfolio-site/` | Deployment/Service/Ingress for the site — the narrowly-scoped, no-`ClusterRole` tier |
+| `infrastructure/` | Namespace, Traefik ACME config, RBAC definitions, Grafana secret (SOPS), Discord notifications — the broader-permission, cluster/bootstrap tier |
+| `clusters/oci-k8s-study/` | Flux's own bootstrap output (`flux-system/`, untouched) plus two thin `Kustomization` pointers at the trees above |
 | `RUNBOOK.md` | Step-by-step instructions for standing this up from scratch on fresh (or wiped) nodes, including the real debugging encountered along the way |
 
 This is deliberately the **GitOps/cluster-config repo only** — app source and

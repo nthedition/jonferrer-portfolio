@@ -88,21 +88,28 @@ Site content lives in a separate **app repo**,
 not here. That repo's CI builds an `nginx:1.27-alpine` image with the site
 baked in and pushes it to `ghcr.io/nthedition/jonferrer-site-portfolio` on
 every push to its `main`, tagged by commit SHA. This repo's
-`manifests/portfolio-placeholder.yaml` Deployment just references that image
+`apps/portfolio-site/deployment.yaml` Deployment just references that image
 by tag — there's no `ConfigMap`, no volume mount, no site content of any kind
 in this repo.
 
+This repo is split into two Kustomize trees, applied separately —
+`apps/portfolio-site/` (the app-tier: Deployment/Service/Ingress) and
+`infrastructure/` (the Namespace itself, Traefik's ACME config, RBAC, the
+Grafana secret, Discord notifications). See `clusters/oci-k8s-study/`'s two
+thin Flux `Kustomization` pointers for why: app-tier reconciles as a scoped,
+narrow-permission identity, infra-tier reconciles with broader permissions,
+deliberately kept separate. `infrastructure/` needs applying first — it
+creates the `portfolio` namespace `apps/portfolio-site/` deploys into:
+
 ```bash
 cd ~/projects/personal/kubernetes-study/portfolio-deployment
-kubectl --context oci-k8s-study apply -k .
+kubectl --context oci-k8s-study apply -k infrastructure
+kubectl --context oci-k8s-study apply -k apps/portfolio-site
 ```
-
-That one command applies everything — namespace, Deployment+Service, ingress,
-and the Traefik ACME config.
 
 **The update workflow is now two steps across two repos**: edit
 `site/index.html` in `jonferrer-site-portfolio` and push (CI builds+publishes
-a new image tag), then bump `manifests/portfolio-placeholder.yaml`'s `image:`
+a new image tag), then bump `apps/portfolio-site/deployment.yaml`'s `image:`
 tag in *this* repo to match and push that too (once Flux is set up per
 Step 7, this second push is what actually rolls the change out — the first
 push alone doesn't touch the cluster). Closing that gap — the image tag bump
@@ -118,26 +125,34 @@ the `-H "Host: ..."` override.
 
 ## Step 5 — Install Prometheus + Grafana (trimmed)
 
+Grafana's admin password is GitOps-managed via a SOPS-encrypted `Secret`
+(`infrastructure/monitoring/grafana-secret.enc.yaml`), not an install-time
+`--set` override. `kubectl apply -k` doesn't understand SOPS encryption on
+its own — only Flux's `kustomize-controller` decrypts it automatically, via
+`clusters/oci-k8s-study/infrastructure.yaml`'s `spec.decryption` block. For
+a manual bootstrap (before Step 8 sets up Flux), decrypt and apply it
+explicitly first:
+```bash
+sops --decrypt infrastructure/monitoring/grafana-secret.enc.yaml | \
+  kubectl --context oci-k8s-study apply -f -
+```
+(needs `SOPS_AGE_KEY_FILE` pointed at the repo's `age.agekey` — see the SOPS
+setup notes in the roadmap.) Then install the chart, pointed at
+`admin.existingSecret` in values rather than any `--set` password override:
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
 helm install monitoring prometheus-community/kube-prometheus-stack \
   --namespace monitoring --create-namespace \
-  -f monitoring/values.yaml \
-  --set grafana.adminPassword="$(openssl rand -base64 18)"
-```
-Don't hardcode a real password into `values.yaml` and commit it — the
-`--set` above generates a random one at install time. Retrieve it after:
-```bash
-kubectl --context oci-k8s-study -n monitoring get secret monitoring-grafana \
-  -o jsonpath='{.data.admin-password}' | base64 -d; echo
+  -f infrastructure/monitoring/values.yaml
 ```
 
-`monitoring/values.yaml` disables Alertmanager, drops Prometheus retention to
-6h with no PVC, and caps every component's requests/limits — sized to fit
-alongside the portfolio site inside the 12GB total budget, not the chart's
-defaults (which alone can exceed 1GB+ per component).
+`infrastructure/monitoring/values.yaml` disables Alertmanager, drops
+Prometheus retention to 6h with no PVC, and caps every component's
+requests/limits — sized to fit alongside the portfolio site inside the 12GB
+total budget, not the chart's defaults (which alone can exceed 1GB+ per
+component).
 
 **Access Grafana** (no ingress wired up for it yet, deliberately — port-forward
 keeps it off the public internet):
@@ -158,7 +173,7 @@ kubectl --context oci-k8s-study top pods -A
 ```
 Everything here (k3s system pods + portfolio site + trimmed monitoring stack)
 should sit well under 12GB combined memory and leave real headroom. If `top`
-shows a node above ~80% memory, that's the signal to trim `monitoring/values.yaml`
+shows a node above ~80% memory, that's the signal to trim `infrastructure/monitoring/values.yaml`
 further before adding anything else — not to resize/add nodes (would exceed
 the free budget).
 
@@ -175,7 +190,7 @@ before it becomes a reclamation risk, not something to guess about now.
 
 ## Step 7 — TLS via Traefik's ACME (Let's Encrypt)
 
-`manifests/traefik-acme-config.yaml` is a `HelmChartConfig` for the `traefik`
+`infrastructure/traefik-acme-config.yaml` is a `HelmChartConfig` for the `traefik`
 release k3s manages automatically — applying it triggers k3s's built-in
 helm-controller to redeploy Traefik with ACME enabled (HTTP-01 challenge) and
 a small persistent volume (`local-path` storage class, k3s's built-in
@@ -184,13 +199,13 @@ lost on every pod restart, and re-requesting one too often risks hitting
 Let's Encrypt's rate limits.
 
 ```bash
-kubectl --context oci-k8s-study apply -f manifests/traefik-acme-config.yaml
+kubectl --context oci-k8s-study apply -f infrastructure/traefik-acme-config.yaml
 ```
 
 No separate `helm upgrade` needed for this one (unlike monitoring) — k3s's
 helm-controller does it automatically when the `HelmChartConfig` changes.
 
-`manifests/portfolio-ingress.yaml` requests the cert via annotations
+`apps/portfolio-site/ingress.yaml` requests the cert via annotations
 (`traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt`) rather
 than a `cert-manager` Certificate resource — simpler for a single ingress,
 no extra controller to install. No `tls.secretName` is set on purpose: with a
@@ -198,7 +213,7 @@ certresolver annotation, Traefik keeps the issued cert in its own
 `acme.json`, not a Kubernetes Secret.
 
 ```bash
-kubectl --context oci-k8s-study apply -f manifests/portfolio-ingress.yaml
+kubectl --context oci-k8s-study apply -f apps/portfolio-site/ingress.yaml
 curl https://<your-domain>
 ```
 
@@ -228,9 +243,13 @@ flux bootstrap github \
 
 This installs Flux's controllers into the `flux-system` namespace and commits
 its own bootstrap manifests back into `clusters/oci-k8s-study/flux-system/`
-in the repo. It does **not** yet know to deploy the site/monitoring — that
-needs an explicit `GitRepository` + `Kustomization` pointing at the repo
-root, added separately (see `clusters/oci-k8s-study/apps.yaml`).
+in the repo. It does **not** yet know to deploy the app or infra — that
+needs two explicit `Kustomization`s reusing the same `GitRepository`
+bootstrap already created, one per tree: `clusters/oci-k8s-study/apps.yaml`
+(→ `apps/portfolio-site/`, scoped `serviceAccountName`) and
+`clusters/oci-k8s-study/infrastructure.yaml` (→ `infrastructure/`, broader
+permissions — see `infrastructure/rbac.yaml`'s comment for why they're
+split this way).
 
 Flux picked over Argo CD here deliberately: it's modular (source-controller +
 kustomize-controller only, no bundled UI/Redis/Dex), which matters on a
@@ -238,6 +257,8 @@ kustomize-controller only, no bundled UI/Redis/Dex), which matters on a
 
 ## Not covered here (deliberately, follow-up work)
 
-- **CI/CD** for the actual portfolio site content (build → push image →
-  `kubectl set image` or a GitOps tool) — depends on what the real site is
-  built with, not decided yet.
+CI/CD for the site content is done — `jonferrer-site-portfolio`'s own
+`build-and-push.yml` builds and publishes an image on every push, and this
+repo's `deploy.yml` validates every manifest tree before merge. What's
+still open (policy enforcement tuning, drift alerting, RBAC — done —, image
+tag automation) is tracked in the roadmap notes, not here.

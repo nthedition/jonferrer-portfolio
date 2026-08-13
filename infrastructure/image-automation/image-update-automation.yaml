@@ -1,0 +1,27 @@
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: portfolio-site
+  namespace: flux-system
+spec:
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      messageTemplate: |-
+        Automated image update
+
+        {{range .Updated.Images}}- {{.}}
+        {{end}}
+  interval: 1m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  update:
+    path: ./apps/portfolio-site
+    strategy: Setters

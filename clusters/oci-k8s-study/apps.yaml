@@ -1,6 +1,9 @@
-# Deploys everything at the repo root (the portfolio site, ingress, and
-# Traefik ACME config — see /kustomization.yaml) by reusing the GitRepository
-# source Flux's own bootstrap already created (flux-system/flux-system).
+# Thin pointer at the app-tier manifests (apps/portfolio-site/) -- reuses the
+# GitRepository source Flux's own bootstrap already created
+# (flux-system/flux-system). Reconciles as the scoped apps-reconciler
+# identity (see infrastructure/rbac.yaml) rather than the cluster-admin
+# default; no decryption block needed here since apps/portfolio-site holds
+# no encrypted secrets (those live under infrastructure/ now).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -8,12 +11,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  path: ./
+  path: ./apps/portfolio-site
   prune: true
+  serviceAccountName: apps-reconciler
   sourceRef:
     kind: GitRepository
     name: flux-system
-  decryption:
-    provider: sops
-    secretRef:
-      name: sops-age

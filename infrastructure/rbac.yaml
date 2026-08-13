@@ -1,0 +1,42 @@
+# Defines the identity the `apps` Kustomization reconciles as (see
+# clusters/oci-k8s-study/apps.yaml's spec.serviceAccountName), scoped down
+# from the cluster-admin default to exactly what `apps` manages:
+# Deployment/Service/Ingress in `portfolio`, nothing else. This file itself
+# is applied by `infrastructure` (the broader-permissioned Kustomization,
+# same reasoning as namespace.yaml/traefik-acme-config.yaml living here) --
+# defining a scoped Role inherently requires broader rights than the scoped
+# identity ends up with.
+#
+# The Grafana Secret (infrastructure/monitoring/grafana-secret.enc.yaml) and
+# the Namespace/HelmChartConfig above are all reconciled by `infrastructure`
+# directly now, not by `apps` -- so apps-reconciler no longer needs any
+# cross-namespace grant at all, just this one namespace-scoped Role.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: apps-reconciler
+  namespace: portfolio
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: apps-reconciler
+  namespace: portfolio
+rules:
+  - apiGroups: ["", "apps", "networking.k8s.io"]
+    resources: ["deployments", "services", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: apps-reconciler
+  namespace: portfolio
+subjects:
+  - kind: ServiceAccount
+    name: apps-reconciler
+    namespace: portfolio
+roleRef:
+  kind: Role
+  name: apps-reconciler
+  apiGroup: rbac.authorization.k8s.io
