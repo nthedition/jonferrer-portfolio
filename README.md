@@ -13,17 +13,23 @@ Oracle Cloud's Always Free tier (2 OCPU / 12GB total, $0/month).
   cert-manager.
 - **Prometheus + Grafana**, resource-trimmed to fit the free-tier memory budget
   alongside the site, for real cluster monitoring.
-- A static portfolio site served straight from a `ConfigMap`-mounted `nginx` pod -
-  no build step, no image to push for content changes.
+- A portfolio site built and published as a container image by a separate **app repo**,
+  [jonferrer-site-portfolio](https://github.com/nthedition/jonferrer-site-portfolio) —
+  this repo only references its image tag, it holds no site content itself.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `site/index.html` | The actual portfolio site content |
 | `manifests/` | Kubernetes manifests (namespace, ingress, Traefik ACME config, site Deployment/Service) |
 | `monitoring/values.yaml` | Trimmed Helm values for `kube-prometheus-stack` |
 | `RUNBOOK.md` | Step-by-step instructions for standing this up from scratch on fresh (or wiped) nodes, including the real debugging encountered along the way |
+
+This is deliberately the **GitOps/cluster-config repo only** — app source and
+its build live in
+[jonferrer-site-portfolio](https://github.com/nthedition/jonferrer-site-portfolio),
+kept separate so this repo's CI only ever validates cluster config, never
+builds anything.
 
 ## Why this exists
 

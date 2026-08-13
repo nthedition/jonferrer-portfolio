@@ -83,23 +83,31 @@ Expect both nodes `Ready` within ~30-60s of the worker install finishing.
 
 ## Step 4 — Deploy the portfolio site
 
-The site content lives at `site/index.html` — a single self-contained static
-page (no build step). The root `kustomization.yaml` turns it into a
-`ConfigMap` via `configMapGenerator`, which hashes the file's content into
-the generated name (e.g. `portfolio-html-btmg9c6mc9`). Kustomize also rewrites
-the Deployment's volume reference to match automatically, so **every real
-content change produces a new ConfigMap name and forces a rolling pod
-update** — no manual restart, no waiting on the kubelet's sync delay.
+Site content lives in a separate **app repo**,
+[jonferrer-site-portfolio](https://github.com/nthedition/jonferrer-site-portfolio) —
+not here. That repo's CI builds an `nginx:1.27-alpine` image with the site
+baked in and pushes it to `ghcr.io/nthedition/jonferrer-site-portfolio` on
+every push to its `main`, tagged by commit SHA. This repo's
+`manifests/portfolio-placeholder.yaml` Deployment just references that image
+by tag — there's no `ConfigMap`, no volume mount, no site content of any kind
+in this repo.
 
 ```bash
 cd ~/projects/personal/kubernetes-study/portfolio-deployment
 kubectl --context oci-k8s-study apply -k .
 ```
 
-That one command applies everything — namespace, site ConfigMap+Deployment+
-Service, ingress, and the Traefik ACME config. Editing `site/index.html` and
-re-running it is the entire update workflow (once Flux is set up per Step 7,
-this happens automatically on every push instead).
+That one command applies everything — namespace, Deployment+Service, ingress,
+and the Traefik ACME config.
+
+**The update workflow is now two steps across two repos**: edit
+`site/index.html` in `jonferrer-site-portfolio` and push (CI builds+publishes
+a new image tag), then bump `manifests/portfolio-placeholder.yaml`'s `image:`
+tag in *this* repo to match and push that too (once Flux is set up per
+Step 7, this second push is what actually rolls the change out — the first
+push alone doesn't touch the cluster). Closing that gap — the image tag bump
+happening automatically instead of by hand — is tracked as follow-up work,
+not yet done; see the roadmap notes.
 
 **Quick test without a domain**, using Traefik's host-port directly:
 ```bash
@@ -107,11 +115,6 @@ curl -H "Host: portfolio.example.com" http://161.153.55.24
 ```
 Should return the site content. Once you point real DNS at a node's IP, drop
 the `-H "Host: ..."` override.
-
-If you outgrow a single static HTML file (framework, build step, etc.), swap
-the `nginx:1.27-alpine` image + `ConfigMap` approach in
-`manifests/portfolio-placeholder.yaml` for an actual built image pushed
-somewhere pullable — GHCR is free for public images.
 
 ## Step 5 — Install Prometheus + Grafana (trimmed)
 

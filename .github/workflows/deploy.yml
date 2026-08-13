@@ -25,13 +25,27 @@ jobs:
       - name: Build Flux's flux-system kustomization
         run: kustomize build clusters/oci-k8s-study/flux-system > .rendered/flux-system.yaml
 
-      # Treat kubeconform runs as a *separate Docker container* 
+      # Treat kubeconform runs as a *separate Docker container*
       - name: Validate against Kubernetes schemas
         uses: docker://ghcr.io/yannh/kubeconform:latest
         with:
           entrypoint: /kubeconform
           args: >-
             -strict -ignore-missing-schemas -summary
+            .rendered/root.yaml
+            .rendered/flux-system.yaml
+            clusters/oci-k8s-study/apps.yaml
+
+      # Advisory only for now (continue-on-error) -- no .kube-linter.yaml yet,
+      # so this runs kube-linter's full default check set. Once there's a real
+      # report to read, tune a config file and drop continue-on-error.
+      - name: Enforce policy - kube-linter
+        uses: docker://ghcr.io/stackrox/kube-linter:latest
+        continue-on-error: true
+        with:
+          entrypoint: /kube-linter
+          args: >-
+            lint
             .rendered/root.yaml
             .rendered/flux-system.yaml
             clusters/oci-k8s-study/apps.yaml
