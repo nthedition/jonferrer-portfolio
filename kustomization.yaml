@@ -12,3 +12,4 @@ configMapGenerator:
     namespace: portfolio
     files:
       - index.html=site/index.html
+      - grafana-dashboard.png=site/grafana-dashboard.png
