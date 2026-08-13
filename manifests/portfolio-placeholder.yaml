@@ -3,9 +3,6 @@
 # references the resulting image by tag. Bumping the tag below (after that
 # repo's CI publishes a new one) is now the entire "deploy a content change"
 # workflow; see that repo's README for how the image gets built.
-#
-# TODO: replace this placeholder tag with the real one from the first
-# successful build in jonferrer-site-portfolio's build-and-push workflow.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,6 +23,15 @@ spec:
           image: ghcr.io/nthedition/jonferrer-site-portfolio:4d4df09fbd869df195ddc1ea9d79a18a9047a268
           ports:
             - containerPort: 80
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
           resources:
             requests:
               cpu: 50m
@@ -33,6 +39,11 @@ spec:
             limits:
               cpu: 200m
               memory: 64Mi
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
