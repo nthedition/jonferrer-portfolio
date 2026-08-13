@@ -18,17 +18,20 @@ jobs:
           sudo mv kustomize /usr/local/bin/
 
       - name: Build root kustomization (site, ingress, ACME config)
-        run: kustomize build . > /tmp/rendered.yaml
+        run: |
+          mkdir -p .rendered
+          kustomize build . > .rendered/root.yaml
 
       - name: Build Flux's flux-system kustomization
-        run: kustomize build clusters/oci-k8s-study/flux-system > /tmp/flux-system-rendered.yaml
+        run: kustomize build clusters/oci-k8s-study/flux-system > .rendered/flux-system.yaml
 
+      # Treat kubeconform runs as a *separate Docker container* 
       - name: Validate against Kubernetes schemas
         uses: docker://ghcr.io/yannh/kubeconform:latest
         with:
           entrypoint: /kubeconform
           args: >-
             -strict -ignore-missing-schemas -summary
-            /tmp/rendered.yaml
-            /tmp/flux-system-rendered.yaml
+            .rendered/root.yaml
+            .rendered/flux-system.yaml
             clusters/oci-k8s-study/apps.yaml
