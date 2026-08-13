@@ -3,4 +3,5 @@
 *.key
 *.crt
 *.pem
+*.agekey
 .rendered/

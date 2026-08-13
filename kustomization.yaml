@@ -6,3 +6,4 @@ resources:
   - manifests/portfolio-placeholder.yaml
   - manifests/portfolio-ingress.yaml
   - manifests/traefik-acme-config.yaml
+  - monitoring/grafana-secret.enc.yaml

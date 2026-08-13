@@ -17,13 +17,24 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
+      - name: Install yq
+        run: |
+          sudo curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+
+      # SOPS-encrypted Secrets carry a top-level `sops:` metadata block that
+      # isn't part of the real Secret schema -- Kubernetes' API server just
+      # ignores unknown fields on built-in types, but strict kubeconform
+      # flags it as an error. Stripped here since it's a validator false
+      # positive, not a real apply-time problem (kustomize-controller
+      # decrypts and applies this correctly in-cluster).
       - name: Build root kustomization (site, ingress, ACME config)
         run: |
           mkdir -p .rendered
-          kustomize build . > .rendered/root.yaml
+          kustomize build . | yq eval 'del(.sops)' - > .rendered/root.yaml
 
       - name: Build Flux's flux-system kustomization
-        run: kustomize build clusters/oci-k8s-study/flux-system > .rendered/flux-system.yaml
+        run: kustomize build clusters/oci-k8s-study/flux-system | yq eval 'del(.sops)' - > .rendered/flux-system.yaml
 
       # Treat kubeconform runs as a *separate Docker container*
       - name: Validate against Kubernetes schemas
