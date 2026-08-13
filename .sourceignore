@@ -1,0 +1,5 @@
+# Flux's source-controller excludes common binary/image extensions by default
+# to keep the fetched git artifact small. The Grafana screenshot is served as
+# part of the site and consumed by Kustomize's configMapGenerator, so it needs
+# to be included explicitly.
+!/site/grafana-dashboard.png
